@@ -1,0 +1,112 @@
+plugins {
+    id 'org.springframework.boot' version '2.2.1.RELEASE'
+    id 'io.spring.dependency-management' version '1.0.8.RELEASE'
+    id 'java'
+}
+
+configurations {
+    mybatisGenerator
+}
+
+
+group = 'com.redis.lock'
+version = '0.0.1-SNAPSHOT'
+sourceCompatibility = '1.8'
+
+configurations {
+    developmentOnly
+    runtimeClasspath {
+        extendsFrom developmentOnly
+    }
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    maven { url 'http://maven.aliyun.com/nexus/content/groups/public/' }
+
+    //mavenCentral()
+}
+apply from: "config.gradle"
+
+dependencies {
+
+    // mysql connection
+    implementation("org.mariadb.jdbc:mariadb-java-client:${rootProject.mariadbJavaClientVersion}")
+    implementation("com.alibaba:druid-spring-boot-starter:${rootProject.druidVersion}")
+
+    // mybatis
+    implementation("org.mybatis.spring.boot:mybatis-spring-boot-starter:${rootProject.mybatisVersion}")
+    implementation("org.mybatis.generator:mybatis-generator-core:${rootProject.mybatisGeneratorVersion}")
+
+    // mybatis generator
+    mybatisGenerator "org.mybatis.generator:mybatis-generator-core:${rootProject.mybatisGeneratorVersion}"
+    mybatisGenerator "org.mariadb.jdbc:mariadb-java-client:${rootProject.mariadbJavaClientVersion}"
+
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    compileOnly 'org.projectlombok:lombok'
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation('org.springframework.boot:spring-boot-starter-test') {
+        exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+    }
+}
+
+test {
+    useJUnitPlatform()
+}
+//generate mapper/entity/xml ==> gradle mybatisGenerate
+def getDbProperties = {
+    def properties = new Properties()
+    file("src/main/resources/mybatis/config.properties").withInputStream { inputStream ->
+        properties.load(inputStream)
+    }
+    properties
+}
+
+//mybatis generator don't support gradle,call ant
+task mybatisGenerate {
+    doLast {
+        def properties = getDbProperties()
+        ant.properties['targetProject'] = projectDir.path
+        ant.properties['driverClass'] = properties.getProperty("jdbc.driverClassName")
+        ant.properties['connectionURL'] = properties.getProperty("jdbc.url")
+        ant.properties['userId'] = properties.getProperty("jdbc.username")
+        ant.properties['password'] = properties.getProperty("jdbc.password")
+        ant.properties['src_main_java'] = sourceSets.main.java.srcDirs[0].path
+        ant.properties['src_main_resources'] = sourceSets.main.resources.srcDirs[0].path
+        ant.properties['modelPackage'] = properties.getProperty("package.model")
+        ant.properties['mapperPackage'] = properties.getProperty("package.mapper")
+        ant.properties['sqlMapperPackage'] = properties.getProperty("package.xml")
+        ant.taskdef(
+                name: 'mbgenerator',
+                classname: 'org.mybatis.generator.ant.GeneratorAntTask',
+                classpath: configurations.mybatisGenerator.asPath
+        )
+        ant.mbgenerator(overwrite: true,
+                configfile: 'src/main/resources/mybatis/generatorConfig.xml', verbose: true) {
+            propertyset {
+                propertyref(name: 'targetProject')
+                propertyref(name: 'userId')
+                propertyref(name: 'driverClass')
+                propertyref(name: 'connectionURL')
+                propertyref(name: 'password')
+                propertyref(name: 'src_main_java')
+                propertyref(name: 'src_main_resources')
+                propertyref(name: 'modelPackage')
+                propertyref(name: 'mapperPackage')
+                propertyref(name: 'sqlMapperPackage')
+            }
+        }
+    }
+}
+
+sourceSets {
+    test {
+        resources {
+            srcDir 'src/test/resources'
+        }
+    }
+}
